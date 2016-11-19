@@ -34,19 +34,16 @@ FOR EACH ROW BEGIN
     -- if a previously entered row has a future date.
     -- If a row is marked removed already, we also don't want to move that date forward any, hence the MIN/IFNULL construct.
     -- If we promise not to add rows out of chronological order, we can probably make this simpler.
-    UPDATE hist_people SET removed = MIN(
-        IFNULL(hist_people.removed, DATETIME('9999-12-31')),
-        (
-            SELECT MIN(hp2.added) FROM hist_people hp2
-            WHERE hp2.id = hist_people.id AND (
-                hp2.added > hist_people.added
-                OR (hp2.added = hist_people.added AND hp2.rev > hist_people.rev)
-            )
+    UPDATE hist_people SET removed = (
+        SELECT MIN(hp2.added) FROM hist_people hp2
+        WHERE hp2.id = hist_people.id AND (
+            hp2.added > hist_people.added
+            OR (hp2.added = hist_people.added AND hp2.rev > hist_people.rev)
         )
-    ) WHERE id = (
+    ) WHERE (removed IS NULL OR removed > NEW.added)
+    AND id = (
         SELECT hp3.id FROM hist_people hp3 WHERE hp3.rev = NEW.rev
     );
-    -- ... refine this WHERE clause to make the updates touch fewer rows ...
 END;
 
 -- Test data on underlying table

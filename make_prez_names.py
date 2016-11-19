@@ -3,7 +3,7 @@
 import random
 
 ITEMS = 100
-EDITS = 100
+EDITS = 500
 
 names = [
     "George Washington",
