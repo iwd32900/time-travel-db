@@ -20,20 +20,19 @@ CREATE TABLE hist_people (
     -- Logical consistency.  We allow added = removed to permit rapid-fire updates, but these records will never be selected in a view.
     CHECK (added <= removed)
 );
-CREATE INDEX idx_people_id ON hist_people (id); -- takes 100 x 100 insert time from ~10 min to ~40 sec.
--- CREATE INDEX idx_people_removed ON hist_people (removed); -- this actually slows things down a bit
--- CREATE INDEX idx_people_added ON hist_people (added); -- this actually slows things down a bit
+CREATE INDEX idx_people_id ON hist_people (id); -- this is critical for inserts
+CREATE INDEX idx_people_removed ON hist_people (removed); -- this makes the view more efficient
 
 CREATE TRIGGER trig_people_id AFTER INSERT ON hist_people
 FOR EACH ROW BEGIN
     -- Ensures that id is auto-assigned when missing, to simulate auto-increment
     UPDATE hist_people SET id = NEW.rev WHERE rev = NEW.rev AND id IS NULL;
     -- Any existing row with the same ID should be marked as removed iff it predates the new row.
+    -- If it's already removed, that date can move back, but not forward.
+    -- Times may be tied because we only get millisecond resolution;  we break ties by `rev`.
     -- Getting this logic right is tricky, because many rows added in quick succession appear simultaneous
     -- (millisecond resolution only), but we also want even the new row to have its removed value set
     -- if a previously entered row has a future date.
-    -- If a row is marked removed already, we also don't want to move that date forward any, hence the MIN/IFNULL construct.
-    -- If we promise not to add rows out of chronological order, we can probably make this simpler.
     UPDATE hist_people SET removed = (
         SELECT MIN(hp2.added) FROM hist_people hp2
         WHERE hp2.id = hist_people.id AND (
@@ -41,9 +40,17 @@ FOR EACH ROW BEGIN
             OR (hp2.added = hist_people.added AND hp2.rev > hist_people.rev)
         )
     ) WHERE (removed IS NULL OR removed > NEW.added)
-    AND id = (
+    AND added <= NEW.added AND id = (
         SELECT hp3.id FROM hist_people hp3 WHERE hp3.rev = NEW.rev
     );
+    -- If we promise not to add rows out of chronological order, we can use this version.
+    -- This version doesn't update NEW.removed if there are future-dated records,
+    -- but is ~2.5x more efficient after 500 updates per item.
+    -- UPDATE hist_people SET removed = IFNULL(MIN(hist_people.removed, NEW.added), NEW.added)
+    -- WHERE (removed IS NULL OR removed > NEW.added)
+    -- AND added <= NEW.added AND rev != NEW.rev AND id = (
+    --     SELECT hp3.id FROM hist_people hp3 WHERE hp3.rev = NEW.rev
+    -- );
 END;
 
 -- Test data on underlying table
@@ -108,11 +115,7 @@ SELECT * FROM people;
 select count(*) from hist_people;
 select count(*) from people;
 select min(added), max(added) from hist_people;
--- about 10 minutes to do 100 items x 100 updates with no indexes
 
 .timer on
 UPDATE people SET full_name = 'Abraham Lincoln' WHERE id = 1;
--- 0.2 sec for one update without indexes
--- 0.015 sec for one update with index on `id` after 100 x 100 (40 sec to load)
--- 0.055 sec for one update with index on `id` after 100 x 200 (6 min to load)
--- 0.001 sec for one update with index on `id` after 10000 x 10 (20 sec to load)
+-- 100 items x 500 updates = 50 sec (0.006 sec insert, 0.001 select * from people)
