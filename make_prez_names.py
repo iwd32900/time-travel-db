@@ -18,5 +18,5 @@ print('BEGIN;')
 for edit in range(EDITS):
     for item in range(ITEMS):
         full_name = "%s %s" % (random.choice(names)[0], random.choice(names)[1])
-        print('INSERT INTO people VALUES (%i, "%s");' % (item, full_name))
+        print('INSERT OR REPLACE INTO people VALUES (%i, "%s");' % (item, full_name))
 print('COMMIT;')
