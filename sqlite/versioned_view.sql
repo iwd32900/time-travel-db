@@ -13,8 +13,8 @@ CREATE TABLE _hist_people (
     removed DATETIME,
     -- In another database, this would be relatively straightforward using variables.
     -- But SQLite doesn't have them, and doesn't let you access a temporary table from a trigger.
-    -- added_by TEXT,
-    -- removed_by TEXT,
+    added_by TEXT,
+    removed_by TEXT,
     -- Remaining columns are for "application data"
     full_name TEXT,
     -- To ensure our hack for auto-assigning IDs works, assuming no one manually overrides rev.
@@ -28,9 +28,7 @@ CREATE INDEX _idx_people_removed ON _hist_people (removed); -- this makes the vi
 CREATE TRIGGER _trig_people_id AFTER INSERT ON _hist_people
 FOR EACH ROW BEGIN
     -- Ensures that id is auto-assigned when missing, to simulate auto-increment
-    UPDATE _hist_people SET id = IFNULL(id, NEW.rev)
-    -- , added_by = (SELECT username from _variables LIMIT 1)
-    WHERE rev = NEW.rev;
+    UPDATE _hist_people SET id = IFNULL(id, NEW.rev) WHERE rev = NEW.rev;
     -- Any existing row with the same ID should be marked as removed iff it predates the new row.
     -- If it's already removed, that date can move back, but not forward.
     -- Times may be tied because we only get millisecond resolution;  we break ties by `rev`.
@@ -43,7 +41,7 @@ FOR EACH ROW BEGIN
             hp2.added > _hist_people.added
             OR (hp2.added = _hist_people.added AND hp2.rev > _hist_people.rev)
         )
-    ) --, removed_by = (SELECT username from _variables LIMIT 1)
+    ), removed_by = NULL
     WHERE (removed IS NULL OR removed > NEW.added)
     AND added <= NEW.added AND id = (
         SELECT hp3.id FROM _hist_people hp3 WHERE hp3.rev = NEW.rev
@@ -91,8 +89,7 @@ SELECT * FROM people;
 -- I would argue that an UPDATE should never change `id`, but maybe you have a reason.
 CREATE TRIGGER _trig_people_update INSTEAD OF UPDATE ON people
 FOR EACH ROW BEGIN
-    UPDATE _hist_people SET removed = STRFTIME('%Y-%m-%d %H:%M:%f', 'now')
-        -- , removed_by = (SELECT username from _variables LIMIT 1)
+    UPDATE _hist_people SET removed = STRFTIME('%Y-%m-%d %H:%M:%f', 'now'), removed_by = NULL
         WHERE id = OLD.id AND id != NEW.id
         AND added <= STRFTIME('%Y-%m-%d %H:%M:%f', 'now')
         AND (removed is NULL OR removed > STRFTIME('%Y-%m-%d %H:%M:%f', 'now'));
@@ -107,8 +104,7 @@ SELECT * FROM people;
 -- This takes a row that is currently visible and makes it invisible as of the present moment.
 CREATE TRIGGER _trig_people_delete INSTEAD OF DELETE ON people
 FOR EACH ROW BEGIN
-    UPDATE _hist_people SET removed = STRFTIME('%Y-%m-%d %H:%M:%f', 'now')
-        -- , removed_by = (SELECT username from _variables LIMIT 1)
+    UPDATE _hist_people SET removed = STRFTIME('%Y-%m-%d %H:%M:%f', 'now'), removed_by = NULL
         WHERE id = OLD.id
         AND added <= STRFTIME('%Y-%m-%d %H:%M:%f', 'now')
         AND (removed is NULL OR removed > STRFTIME('%Y-%m-%d %H:%M:%f', 'now'));
@@ -116,6 +112,17 @@ END;
 
 DELETE FROM people WHERE full_name = 'FDR';
 SELECT * FROM people;
+
+-- This would be set by each connection prior to performing any other operations.
+-- However, it makes data loading take ~33% longer.
+CREATE TEMPORARY TRIGGER _tmptrig_people_by AFTER UPDATE ON _hist_people
+FOR EACH ROW BEGIN
+    UPDATE _hist_people SET added_by = 'gwash' WHERE added_by IS NULL AND added IS NOT NULL;
+    UPDATE _hist_people SET removed_by = 'gwash' WHERE removed_by IS NULL AND removed IS NOT NULL;
+END;
+-- These indices are essential for reasonable performance of the user update.
+CREATE INDEX _idx_people_added_by ON _hist_people (added_by) WHERE added_by IS NULL; -- this makes the added_by update more efficient
+CREATE INDEX _idx_people_removed_by ON _hist_people (removed_by) WHERE removed_by IS NULL; -- this makes the removed_by update more efficient
 
 -- .mode csv
 -- .import prez_names.csv people;
