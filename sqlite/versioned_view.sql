@@ -124,9 +124,13 @@ END;
 CREATE INDEX _idx_people_added_by ON _hist_people (added_by) WHERE added_by IS NULL; -- this makes the added_by update more efficient
 CREATE INDEX _idx_people_removed_by ON _hist_people (removed_by) WHERE removed_by IS NULL; -- this makes the removed_by update more efficient
 
--- .mode csv
--- .import prez_names.csv people;
+-- Bulk load data to test performance
 .read prez_names.sql
+
+-- Doing this once after a big update, rather than after every row with a temporary trigger, is much more efficient.
+-- UPDATE _hist_people SET added_by = 'gwash' WHERE added_by IS NULL AND added IS NOT NULL;
+-- UPDATE _hist_people SET removed_by = 'gwash' WHERE removed_by IS NULL AND removed IS NOT NULL;
+
 select count(*) from _hist_people;
 select count(*) from people;
 select min(added), max(added) from _hist_people;

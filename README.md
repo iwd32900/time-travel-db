@@ -154,3 +154,14 @@ Conceptually, this is easy to add to our scheme.
 The `_hist_people` table needs `added_by` and `removed_by` columns, and the triggers need to update them when the corresponding dates are set.
 However, I couldn't find a way to do it easily in SQLite.
 SQLite does not feature @variables like MySQL does, and it doesn't allow access to temporary tables from inside triggers.
+I finally came up with a scheme that requires each database connection to create a `TEMPORARY TRIGGER ... AFTER UPDATE ON _hist_people`.
+It introduces a performance hit, but it may be tolerable if you need this function.
+If you're going to perform a whole lot of modifications, it will be much faster to update `added_by` and `removed_by` just once, after the everything is finished, rather than after every row with a trigger.
+
+## Performance and alternatives
+
+This scheme works well for smallish data sets, but it is less performant than a simple unversioned table.
+On my laptop, loading 100 items with 500 versions each (50,000 total INSERTs) takes about 60 seconds.
+In contrast, running the same 50,000 `INSERT OR REPLACE` commands against a simple unversioned table takes about half a second!
+Peformance scales with number of versions, however -- 10,000 items with 5 edits each takes only 8 seconds.
+
