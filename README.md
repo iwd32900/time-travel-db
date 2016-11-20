@@ -165,3 +165,13 @@ On my laptop, loading 100 items with 500 versions each (50,000 total INSERTs) ta
 In contrast, running the same 50,000 `INSERT OR REPLACE` commands against a simple unversioned table takes about half a second!
 Peformance scales with number of versions, however -- 10,000 items with 5 edits each takes only 8 seconds.
 
+With very minor modifications, you can use a real table for `people` instead of a view.
+The triggers become `AFTER` triggers rather than `INSTEAD OF`, but are otherwise pretty much identical.
+In my testing, there was no performance benefit when loading data -- in fact, it was slightly slower.
+It also keeps a second copy of current data, which could up to double the size of the database.
+Finally, it eliminates the ability to "schedule" future updates to the database by inserting post-dated records.
+
+However, there are some potential upsides.
+It may allow more efficient indexing and querying, particularly when there are many more items in the history than are current.
+It also allows you to explictly declare (and the database to enforce) foreign key relationships.
+And it restores normal semantics to `INSERT`, rather than the `INSERT OR REPLACE` behavior the view exhibits.
