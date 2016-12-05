@@ -138,3 +138,14 @@ select min(added), max(added) from _hist_people;
 .timer on
 UPDATE people SET full_name = 'Abraham Lincoln' WHERE id = 1;
 -- 100 items x 500 updates = 50 sec (0.006 sec insert, 0.001 select * from people)
+
+SELECT added FROM _hist_people WHERE rev IN (50000, 50008); -- use these times in the query below!
+
+SELECT * FROM _hist_people
+WHERE (
+  added <= '2016-12-04 21:39:00.748'
+  AND (removed > '2016-12-04 21:39:00.748' AND removed <= '2016-12-04 21:39:00.834')
+) OR (
+  (added > '2016-12-04 21:39:00.748' AND added <= '2016-12-04 21:39:00.834')
+  AND (removed is NULL OR removed >= '2016-12-04 21:39:00.834')
+) ORDER BY id, added, rev;

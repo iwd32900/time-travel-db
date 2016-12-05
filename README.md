@@ -175,3 +175,26 @@ However, there are some potential upsides.
 It may allow more efficient indexing and querying, particularly when there are many more items in the history than are current.
 It also allows you to explictly declare (and the database to enforce) foreign key relationships.
 And it restores normal semantics to `INSERT`, rather than the `INSERT OR REPLACE` behavior the view exhibits.
+
+## Temporal "diff"
+
+This schema also allows a "temporal diff", querying the database to discover all the rows that changed over some defined span of time.
+Given two time points, this query will find up to two rows for each `id`:
+a row that was created before the interval and deleted during it,
+and a row that was created during the interval and deleted after it (or not at all).
+Since rows never have overlapping intervals, there are at most two such rows.
+The first one represents the state of the database at the first timepoint;  the second one, the state of the database at the second timepoint.
+With appropriate red/green coloring, output of this query looks much like `diff`.
+
+```
+SELECT * FROM _hist_people
+WHERE (
+  added <= '2016-12-04 21:39:00.748'
+  AND (removed > '2016-12-04 21:39:00.748' AND removed <= '2016-12-04 21:39:00.834')
+) OR (
+  (added > '2016-12-04 21:39:00.748' AND added <= '2016-12-04 21:39:00.834')
+  AND (removed is NULL OR removed >= '2016-12-04 21:39:00.834')
+) ORDER BY id, added, rev;
+```
+
+This kind of query is useful for allowing people to track changes.  For example, you could easily show a user all the changes to the table since the last time she logged in.
